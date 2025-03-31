@@ -2,7 +2,10 @@ const {
   Client, 
   GatewayIntentBits, 
   EmbedBuilder, 
-  PermissionsBitField 
+  PermissionsBitField, 
+  SlashCommandBuilder, 
+  REST, 
+  Routes 
 } = require('discord.js');
 require('dotenv').config();
 
@@ -12,35 +15,66 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildPresences, // Needed for status/activity
   ],
 });
 
-// Define allowed roles (replace with your role IDs)
-const allowedRoles = ['1348773043287363611']; // Add your role IDs here
+// Allowed role for ?whois command
+const allowedRoles = ['1348773043287363611']; 
+const announcementRoleID = '1348773043287363611'; 
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log('Bot is online!');
+
+  // Register Slash Commands
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('say')
+      .setDescription('Send an announcement')
+      .addStringOption(option =>
+        option.setName('message')
+          .setDescription('The announcement message')
+          .setRequired(true))
+      .addStringOption(option =>
+        option.setName('from')
+          .setDescription('Who should the message appear from?')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Me', value: 'me' },
+            { name: 'A Role I Have', value: 'role' }
+          ))
+      .addRoleOption(option =>
+        option.setName('role')
+          .setDescription('Select a role to announce from (only if you chose "A Role I Have")')
+          .setRequired(false))
+  ].map(command => command.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+  try {
+    console.log('Registering slash commands...');
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log('✅ Slash commands registered!');
+  } catch (error) {
+    console.error('Error registering slash commands:', error);
+  }
 });
 
+// Handle ?whois Command
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const args = message.content.split(' ');
   if (args[0] === '?whois') {
-    // Check if user has permission
+    // Permission Check
     if (!message.member.roles.cache.some(role => allowedRoles.includes(role.id))) {
       return message.reply('❌ You do not have permission to use this command.');
     }
 
-    // Get mentioned user or sender
+    // Get user (Mentioned or Self)
     const user = message.mentions.users.first() || message.author;
-    const member = message.guild.members.cache.get(user.id);
+    const member = await message.guild.members.fetch(user.id);
 
-    // Fetch user data
-    await member.fetch(); // Ensure we have updated info
-
-    // Get user details
+    // User Info
     const pfp = user.displayAvatarURL({ dynamic: true, size: 1024 });
     const username = user.username;
     const displayName = member.displayName;
@@ -50,22 +84,42 @@ client.on('messageCreate', async (message) => {
       .filter(role => role.id !== message.guild.id)
       .map(role => role)
       .join(', ') || 'No roles';
-    
-    // Fetch correct activity
+
+    // Status & Activity
+    let status = 'Offline';
     let activity = 'None';
-    if (member.presence?.activities.length > 0) {
-      const activityType = member.presence.activities[0].type; // Get activity type (Playing, Listening, etc.)
-      const activityName = member.presence.activities[0].name; // Activity name
-      activity = `${activityType === 0 ? 'Playing' : activityType === 2 ? 'Listening to' : activityType === 3 ? 'Watching' : 'Custom'} ${activityName}`;
+
+    if (member.presence) {
+      // Status Mapping
+      const statusMap = {
+        online: '🟢 Online',
+        idle: '🌙 Idle',
+        dnd: '⛔ Do Not Disturb',
+        offline: '⚫ Offline',
+      };
+      status = statusMap[member.presence.status] || 'Unknown';
+
+      // Activity Check
+      if (member.presence.activities.length > 0) {
+        const userActivity = member.presence.activities[0];
+        switch (userActivity.type) {
+          case 0: activity = `🎮 Playing **${userActivity.name}**`; break;
+          case 1: activity = `🔴 Streaming **${userActivity.name}**`; break;
+          case 2: activity = `🎵 Listening to **${userActivity.name}**`; break;
+          case 3: activity = `📺 Watching **${userActivity.name}**`; break;
+          case 4: activity = `💬 Custom Status: **${userActivity.state}**`; break;
+          default: activity = 'None';
+        }
+      }
     }
 
-    // User badges (if available)
-    const badges = user.flags ? user.flags.toArray().join(', ') : 'No badges';
+    // User Badges
+    const badges = user.flags?.toArray().join(', ') || 'No badges';
 
-    // Create embed
+    // Create Embed
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`${displayName}?`)
+      .setTitle(`User Info: ${displayName}`)
       .setThumbnail(pfp)
       .addFields(
         { name: 'Username', value: username, inline: true },
@@ -83,70 +137,27 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-client.login(process.env.BOT_TOKEN);
-// Define announcement role ID (Change this to your actual role ID)
-const announcementRoleID = '1348773043287363611';
-
-// Register the /say slash command
-const commands = [
-  new SlashCommandBuilder()
-    .setName('say')
-    .setDescription('Send an announcement')
-    .addStringOption(option =>
-      option.setName('message')
-        .setDescription('The announcement message')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('from')
-        .setDescription('Who should the message appear from?')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Me', value: 'me' },
-          { name: 'A Role I Have', value: 'role' }
-        ))
-    .addRoleOption(option =>
-      option.setName('role')
-        .setDescription('Select a role to announce from (only if you chose "A Role I Have")')
-        .setRequired(false))
-].map(command => command.toJSON());
-
-// Deploy the command
-const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
-client.once('ready', async () => {
-  try {
-    console.log('Registering slash commands...');
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commands }
-    );
-    console.log('✅ Slash commands registered!');
-  } catch (error) {
-    console.error('Error registering slash commands:', error);
-  }
-});
-
-// Handle slash command execution
+// Handle /say Slash Command
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'say') {
     const member = interaction.member;
-    
-    // Check if user has the announcement role
+
+    // Permission Check
     if (!member.roles.cache.has(announcementRoleID)) {
       return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
     }
 
-    // Get user input
+    // Get Input
     const messageText = interaction.options.getString('message');
     const fromOption = interaction.options.getString('from');
     const selectedRole = interaction.options.getRole('role');
 
     let senderName;
     let senderAvatar;
-    let isRoleSender = false;
 
-    // Determine sender
+    // Determine Sender
     if (fromOption === 'me') {
       senderName = member.displayName;
       senderAvatar = member.displayAvatarURL();
@@ -156,12 +167,11 @@ client.on('interactionCreate', async interaction => {
       }
       senderName = selectedRole.name;
       senderAvatar = interaction.guild.iconURL();
-      isRoleSender = true;
     } else {
-      return interaction.reply({ content: '❌ Invalid selection for the sender.', ephemeral: true });
+      return interaction.reply({ content: '❌ Invalid sender selection.', ephemeral: true });
     }
 
-    // Create announcement embed
+    // Create Announcement Embed
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
       .setTitle('📢 Announcement')
@@ -169,10 +179,12 @@ client.on('interactionCreate', async interaction => {
       .setFooter({ text: `Sent by ${senderName}`, iconURL: senderAvatar })
       .setTimestamp();
 
-    // Send message
+    // Send Announcement
     await interaction.channel.send({ embeds: [embed] });
 
-    // Confirm command execution
+    // Confirm Execution
     await interaction.reply({ content: '✅ Announcement sent!', ephemeral: true });
   }
 });
+
+client.login(process.env.BOT_TOKEN);
