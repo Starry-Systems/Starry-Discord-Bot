@@ -2,10 +2,10 @@ const {
   Client, 
   GatewayIntentBits, 
   EmbedBuilder, 
-  PermissionsBitField, 
   SlashCommandBuilder, 
   REST, 
-  Routes 
+  Routes, 
+  ActivityType 
 } = require('discord.js');
 require('dotenv').config();
 
@@ -15,22 +15,26 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildPresences, // Needed for status/activity
+    GatewayIntentBits.GuildPresences, 
   ],
 });
 
-// Allowed role for ?whois command
-const allowedRoles = ['1348773043287363611']; 
-const announcementRoleID = '1348773043287363611'; 
+// Allowed role for /say command
+const announcementRoleID = '1348773043287363611';
+const allowedRoles = ['1348773043287363611']; // Who can use ?whois
 
 client.once('ready', async () => {
-  console.log('Bot is online!');
+  console.log('✅ Bot is online!');
 
   // Register Slash Commands
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send an announcement')
+      .addStringOption(option =>
+        option.setName('title')
+          .setDescription('The announcement title (default: 📢 Announcement)')
+          .setRequired(false))
       .addStringOption(option =>
         option.setName('message')
           .setDescription('The announcement message')
@@ -51,30 +55,31 @@ client.once('ready', async () => {
 
   const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
   try {
-    console.log('Registering slash commands...');
+    console.log('📌 Registering slash commands...');
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log('✅ Slash commands registered!');
   } catch (error) {
-    console.error('Error registering slash commands:', error);
+    console.error('❌ Error registering slash commands:', error);
   }
 });
 
-// Handle ?whois Command
+// 🔹 ?whois Command
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const args = message.content.split(' ');
   if (args[0] === '?whois') {
-    // Permission Check
+    // Check if user has permission
     if (!message.member.roles.cache.some(role => allowedRoles.includes(role.id))) {
       return message.reply('❌ You do not have permission to use this command.');
     }
 
-    // Get user (Mentioned or Self)
+    // Get mentioned user or sender
     const user = message.mentions.users.first() || message.author;
-    const member = await message.guild.members.fetch(user.id);
+    const member = message.guild.members.cache.get(user.id);
+    await member.fetch(); // Ensure we have updated info
 
-    // User Info
+    // User Information
     const pfp = user.displayAvatarURL({ dynamic: true, size: 1024 });
     const username = user.username;
     const displayName = member.displayName;
@@ -85,41 +90,45 @@ client.on('messageCreate', async (message) => {
       .map(role => role)
       .join(', ') || 'No roles';
 
-    // Status & Activity
-    let status = 'Offline';
+    // 🔹 Status & Activity
+    const status = member.presence?.status 
+      ? member.presence.status.charAt(0).toUpperCase() + member.presence.status.slice(1) // Capitalize status
+      : 'Unknown';
+
     let activity = 'None';
+    if (member.presence?.activities.length > 0) {
+      const act = member.presence.activities[0];
 
-    if (member.presence) {
-      // Status Mapping
-      const statusMap = {
-        online: '🟢 Online',
-        idle: '🌙 Idle',
-        dnd: '⛔ Do Not Disturb',
-        offline: '⚫ Offline',
-      };
-      status = statusMap[member.presence.status] || 'Unknown';
-
-      // Activity Check
-      if (member.presence.activities.length > 0) {
-        const userActivity = member.presence.activities[0];
-        switch (userActivity.type) {
-          case 0: activity = `🎮 Playing **${userActivity.name}**`; break;
-          case 1: activity = `🔴 Streaming **${userActivity.name}**`; break;
-          case 2: activity = `🎵 Listening to **${userActivity.name}**`; break;
-          case 3: activity = `📺 Watching **${userActivity.name}**`; break;
-          case 4: activity = `💬 Custom Status: **${userActivity.state}**`; break;
-          default: activity = 'None';
-        }
+      switch (act.type) {
+        case ActivityType.Playing:
+          activity = `🎮 Playing **${act.name}**`;
+          break;
+        case ActivityType.Streaming:
+          activity = `📺 Streaming **${act.name}** on [Twitch](${act.url})`;
+          break;
+        case ActivityType.Listening:
+          activity = `🎵 Listening to **${act.name}**`;
+          break;
+        case ActivityType.Watching:
+          activity = `👀 Watching **${act.name}**`;
+          break;
+        case ActivityType.Custom:
+          activity = `💬 ${act.state}`;
+          break;
+        default:
+          activity = 'None';
       }
     }
 
     // User Badges
-    const badges = user.flags?.toArray().join(', ') || 'No badges';
+    const badges = user.flags 
+      ? user.flags.toArray().map(flag => `🏅 ${flag}`).join(', ') 
+      : 'No badges';
 
     // Create Embed
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`User Info: ${displayName}`)
+      .setTitle(`${displayName}?`)
       .setThumbnail(pfp)
       .addFields(
         { name: 'Username', value: username, inline: true },
@@ -137,7 +146,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Handle /say Slash Command
+// 🔹 Handle /say Slash Command
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -150,6 +159,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     // Get Input
+    const title = interaction.options.getString('title') || '📢 Announcement';
     const messageText = interaction.options.getString('message');
     const fromOption = interaction.options.getString('from');
     const selectedRole = interaction.options.getRole('role');
@@ -174,7 +184,7 @@ client.on('interactionCreate', async interaction => {
     // Create Announcement Embed
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle('📢 Announcement')
+      .setTitle(title)
       .setDescription(messageText)
       .setFooter({ text: `Sent by ${senderName}`, iconURL: senderAvatar })
       .setTimestamp();
