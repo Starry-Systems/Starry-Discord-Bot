@@ -12,6 +12,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,
   ],
 });
 
@@ -50,8 +51,13 @@ client.on('messageCreate', async (message) => {
       .map(role => role)
       .join(', ') || 'No roles';
     
-    const status = member.presence ? member.presence.status : 'Offline';
-    const activity = member.presence?.activities[0]?.name || 'None';
+    // Fetch correct activity
+    let activity = 'None';
+    if (member.presence?.activities.length > 0) {
+      const activityType = member.presence.activities[0].type; // Get activity type (Playing, Listening, etc.)
+      const activityName = member.presence.activities[0].name; // Activity name
+      activity = `${activityType === 0 ? 'Playing' : activityType === 2 ? 'Listening to' : activityType === 3 ? 'Watching' : 'Custom'} ${activityName}`;
+    }
 
     // User badges (if available)
     const badges = user.flags ? user.flags.toArray().join(', ') : 'No badges';
@@ -78,3 +84,95 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.BOT_TOKEN);
+// Define announcement role ID (Change this to your actual role ID)
+const announcementRoleID = '1348773043287363611';
+
+// Register the /say slash command
+const commands = [
+  new SlashCommandBuilder()
+    .setName('say')
+    .setDescription('Send an announcement')
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('The announcement message')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('from')
+        .setDescription('Who should the message appear from?')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Me', value: 'me' },
+          { name: 'A Role I Have', value: 'role' }
+        ))
+    .addRoleOption(option =>
+      option.setName('role')
+        .setDescription('Select a role to announce from (only if you chose "A Role I Have")')
+        .setRequired(false))
+].map(command => command.toJSON());
+
+// Deploy the command
+const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+client.once('ready', async () => {
+  try {
+    console.log('Registering slash commands...');
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+    console.log('✅ Slash commands registered!');
+  } catch (error) {
+    console.error('Error registering slash commands:', error);
+  }
+});
+
+// Handle slash command execution
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'say') {
+    const member = interaction.member;
+    
+    // Check if user has the announcement role
+    if (!member.roles.cache.has(announcementRoleID)) {
+      return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+    }
+
+    // Get user input
+    const messageText = interaction.options.getString('message');
+    const fromOption = interaction.options.getString('from');
+    const selectedRole = interaction.options.getRole('role');
+
+    let senderName;
+    let senderAvatar;
+    let isRoleSender = false;
+
+    // Determine sender
+    if (fromOption === 'me') {
+      senderName = member.displayName;
+      senderAvatar = member.displayAvatarURL();
+    } else if (fromOption === 'role' && selectedRole) {
+      if (!member.roles.cache.has(selectedRole.id)) {
+        return interaction.reply({ content: '❌ You can only send announcements from a role you are part of.', ephemeral: true });
+      }
+      senderName = selectedRole.name;
+      senderAvatar = interaction.guild.iconURL();
+      isRoleSender = true;
+    } else {
+      return interaction.reply({ content: '❌ Invalid selection for the sender.', ephemeral: true });
+    }
+
+    // Create announcement embed
+    const embed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setTitle('📢 Announcement')
+      .setDescription(messageText)
+      .setFooter({ text: `Sent by ${senderName}`, iconURL: senderAvatar })
+      .setTimestamp();
+
+    // Send message
+    await interaction.channel.send({ embeds: [embed] });
+
+    // Confirm command execution
+    await interaction.reply({ content: '✅ Announcement sent!', ephemeral: true });
+  }
+});
