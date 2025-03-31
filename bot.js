@@ -26,19 +26,14 @@ const allowedRoles = ['1348773043287363611']; // Who can use ?whois
 client.once('ready', async () => {
   console.log('✅ Bot is online!');
 
-  // Register Slash Commands
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send an announcement')
       .addStringOption(option =>
-        option.setName('title')
-          .setDescription('The announcement title (default: 📢 Announcement)')
-          .setRequired(false))
-      .addStringOption(option =>
         option.setName('message')
           .setDescription('The announcement message')
-          .setRequired(true))
+          .setRequired(true))  // ✅ Required option comes first
       .addStringOption(option =>
         option.setName('from')
           .setDescription('Who should the message appear from?')
@@ -46,13 +41,17 @@ client.once('ready', async () => {
           .addChoices(
             { name: 'Me', value: 'me' },
             { name: 'A Role I Have', value: 'role' }
-          ))
+          ))  // ✅ Required option comes second
+      .addStringOption(option =>
+        option.setName('title')
+          .setDescription('The announcement title (default: 📢 Announcement)')
+          .setRequired(false))  // ✅ Optional
       .addRoleOption(option =>
         option.setName('role')
           .setDescription('Select a role to announce from (only if you chose "A Role I Have")')
-          .setRequired(false))
+          .setRequired(false))  // ✅ Optional
   ].map(command => command.toJSON());
-
+  
   const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
   try {
     console.log('📌 Registering slash commands...');
