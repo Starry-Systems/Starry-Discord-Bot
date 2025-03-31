@@ -28,7 +28,7 @@ client.on('messageCreate', (message) => {
   const messageContent = message.content.toLowerCase();
   for (const greeting of greetings) {
     if (messageContent.includes(greeting)) {
-      message.channel.send('Hello! Welcome to Starry Systems!')
+      message.channel.send('Hello! Welcome to Starry Systems! We make websites.')
       break;
     }
   }
