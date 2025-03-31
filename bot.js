@@ -59,7 +59,7 @@ client.on('messageCreate', async (message) => {
     // Create embed
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`Who is ${displayName}?`)
+      .setTitle(`${displayName}?`)
       .setThumbnail(pfp)
       .addFields(
         { name: 'Username', value: username, inline: true },
