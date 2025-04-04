@@ -32,7 +32,7 @@ client.once('ready', async () => {
       .setDescription('Send an announcement')
       .addStringOption(option =>
         option.setName('message')
-          .setDescription('The announcement message')
+          .setDescription('The announcement message Please Only Do It In The announcement channel')
           .setRequired(true))  // ✅ Required option comes first
       .addStringOption(option =>
         option.setName('from')
