@@ -91,9 +91,10 @@ client.on('interactionCreate', async interaction => {
     const member = interaction.member;
 
     // Permission Check
-    if (!member.roles.cache.has(announcementRoleID)) {
-      return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
-    }
+    if (!interaction.member || !interaction.member.roles) {
+      console.error("Error: interaction.member or roles is null");
+      return;
+  }  
 
     // Get Input
     const title = interaction.options.getString('title') || '📢 Announcement';
