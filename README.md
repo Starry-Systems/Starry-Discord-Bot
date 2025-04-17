@@ -1,3 +1,3 @@
 # Starry Bot
 
-Created by QuantumDev - <a href="https://quantum.is-a.dev">His website</a>
+Created by QuantumDev - <a href="https://quantumdev.cc">His website</a>
